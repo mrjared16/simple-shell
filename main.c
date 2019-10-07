@@ -61,59 +61,93 @@ NORMAL:
 
 void handle(int mode, char *args[], char **pipe_args, char *file_name) {
     pid_t pid1, pid2, pid3;
-    pid1 = fork();
-
-    if (pid1 == 0) {
-        if (mode == PIPE)
+    if (mode == PIPE)
+    {
+        int fd[2];
+        pipe(fd);
+        pid2 = fork();
+        
+        if(pid2 < 0)
         {
-            int fd[2];
-            pipe(fd);
-            pid2 = fork();
-
-            //2nd process
-            if (pid2 == 0)
+            printf("fork failed!\n");
+            exit(1);
+        }
+        //1st command
+        else if (pid2 == 0)
+        {
+            dup2(fd[IN], STDOUT_FILENO);
+            close(fd[OUT]);
+            close(fd[IN]);
+            if (execvp(args[0], args) < 0)
+            {
+                printf("error when executing 1st command.\n");
+                exit(0);
+            }
+        }
+        else {
+            // 2nd command
+            pid3 = fork();
+            if (pid3 < 0)
+            {
+                printf("fork failed!\n");
+                exit(1);
+            }
+            else if (pid3 == 0)
             {
                 dup2(fd[OUT], STDIN_FILENO);
                 close(fd[IN]);
                 close(fd[OUT]);
-                execvp(pipe_args[0], pipe_args);
+                if (execvp(pipe_args[0], pipe_args) < 0)
+                {
+                    printf("error when executing 2nd command.\n");
+                    exit(0);
+                }
             }
             else {
-                // 1st process
-                pid3 = fork();
-                if (pid3 == 0)
-                {
-                    dup2(fd[IN], STDOUT_FILENO);
-                    close(fd[OUT]);
-                    close(fd[IN]);
-                    execvp(args[0], args);
-                }
-                else {
-                    close(fd[IN]);
-                    close(fd[OUT]);
-                    waitpid(-1, NULL, 0);
-                    waitpid(-1, NULL, 0); 
-                }
+                close(fd[IN]);
+                close(fd[OUT]);
+                waitpid(-1, NULL, 0);
+                waitpid(-1, NULL, 0);
             }
         }
-        else {
-            int fd;
-            if (mode == REDIRECTION_IN) {
-                fd = open(file_name, O_RDONLY, 0);
-                dup2(fd, STDIN_FILENO);
-            } 
-            else 
-            if (mode == REDIRECTION_OUT) {
-                fd = creat(file_name, 0644);
-                dup2(fd, STDOUT_FILENO);
-            }
+        return;
+    }
 
-            close(fd);
-            execvp(args[0], args);
+    pid1 = fork();
+    if (pid1 < 0)
+    {
+        printf("fork failed!\n");
+        exit(1);
+    }
+    else 
+    if (pid1 == 0) {
+        int fd;
+        if (mode == REDIRECTION_IN) {
+            if ((fd = open(file_name, O_RDONLY, 0)) < 0) {
+                perror("Couldn't open file");
+                exit(0);
+            }
+            dup2(fd, STDIN_FILENO);
+        } 
+        else 
+        if (mode == REDIRECTION_OUT) {
+            if ((fd = creat(file_name, 0644)) < 0) {
+                perror("Couldn't open file");
+                exit(0);
+            } 
+            dup2(fd, STDOUT_FILENO);
         }
+
+        close(fd);
+        if (execvp(args[0], args) < 0)
+        {
+            printf("Error when executing command.\n");
+            exit(0);
+        }
+        
     } else {                   
         if (mode != CONCURRENT)
-            waitpid(pid1, NULL, 0);
+            waitpid(pid1, NULL, 0);//waitpid(-1, NULL, 0);
     }
 }
 
@@ -200,7 +234,7 @@ int main(void)
 
     while (run) {
         printf("osh>");
-
+        fflush(stdin);
         fgets(cmd, MAXLINE, stdin);
         cmd[strlen(cmd) - 1] = '\0';
 
@@ -209,6 +243,7 @@ int main(void)
             if (mode == EXIT)
             {
                 run = 0;
+                break;
             }
             else
                 handle(mode, args, pipe_args, file_name);
