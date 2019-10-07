@@ -14,12 +14,12 @@
 #define SUCCESS 1
 
 #define INIT 0
-#define NORMAL 2
-#define CONCURRENT 3
-#define REDIRECTION_IN 4
+#define NORMAL 1
+#define CONCURRENT 2
+#define REDIRECTION_IN 3
 #define REDIRECTION_OUT 4
-#define PIPE 6
-#define EXIT 7
+#define PIPE 5
+#define EXIT 6
 
 #define IN 1
 #define OUT 0
