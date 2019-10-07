@@ -113,7 +113,7 @@ void handle(int mode, char *args[], char **pipe_args, char *file_name) {
         }
     } else {                   
         if (mode != CONCURRENT)
-            wait(NULL);
+            waitpid(pid1, NULL, 0);
     }
 }
 
