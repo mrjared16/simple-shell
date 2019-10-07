@@ -8,17 +8,22 @@
 #include <string.h>
 
 #define MAXLINE 80 /* The maximum length cmd */
+#define MAX_FILENAMELENGTH 80
 
-#define NORMAL 0
-#define CONCURRENT 1
-#define REDIRECTION_IN 2
-#define REDIRECTION_OUT 3
-#define PIPE 4
+#define ERROR 0
+#define SUCCESS 1
+
+#define INIT 0
+#define NORMAL 2
+#define CONCURRENT 3
+#define REDIRECTION_IN 4
+#define REDIRECTION_OUT 4
+#define PIPE 6
+#define EXIT 7
 
 #define IN 1
 #define OUT 0
 
-char file_name[80];
 
 void split(char *par,char *args[]){
     char* tmp;
@@ -43,18 +48,18 @@ NORMAL:
     + child: execute
     + parent: continue
 >: 
-    + child: create file -> execute -> write to file
+    + child: create file -> stdout = file -> execute
     + parent: wait 
 <: 
-    + child: open file -> read file -> execute
+    + child: open file -> stdin = file -> execute
     + parent: wait
 |: 
     + parent: wait
-    + child: execute 1st -> pipe -> wait
-    + child of child: get input from 1st -> execute 2nd
+    + child: pipe -> fork -> pipe_in = stdout -> execute -> wait
+    + child of child: stdin = pipe_out -> execute
 */
 
-void handle(int mode, char *args[], char **pipe_args) {
+void handle(int mode, char *args[], char **pipe_args, char *file_name) {
     pid_t pid1, pid2, pid3;
     pid1 = fork();
 
@@ -64,6 +69,8 @@ void handle(int mode, char *args[], char **pipe_args) {
             int fd[2];
             pipe(fd);
             pid2 = fork();
+
+            //2nd process
             if (pid2 == 0)
             {
                 dup2(fd[OUT], STDIN_FILENO);
@@ -72,6 +79,7 @@ void handle(int mode, char *args[], char **pipe_args) {
                 execvp(pipe_args[0], pipe_args);
             }
             else {
+                // 1st process
                 pid3 = fork();
                 if (pid3 == 0)
                 {
@@ -113,14 +121,35 @@ void handle(int mode, char *args[], char **pipe_args) {
 convert command => args
 !!: -> do nothing, execute previous command
 >, <: get file name, remove "<" or ">" and file name
-|: remove "|", move 2nd command to 2nd args
+|: remove "|", move 2nd command to pipe_args
 */
-void inputProcessing(char *cmd, int *mode, char *args[], char ***pipe_args)
+int inputProcessing(char *cmd, int *mode, char *args[], char ***pipe_args, char *file_name, char *history)
 {
+    if (strcmp(cmd, "") == 0)
+    {
+        printf("Please input command!\n");
+        return ERROR;
+    }
+
     if (strcmp(cmd, "!!") == 0)
-        return;   
+    {
+        if (*mode == INIT)
+        {
+            printf("No commands in history.\n");
+            return ERROR;
+        }
+        printf("%s\n", history);
+        return SUCCESS;   
+    }
+
+    if (strcmp(cmd, "exit") == 0)
+    {
+        *mode = EXIT;
+        return SUCCESS;
+    }
 
     *mode = NORMAL;
+    strcpy(history, cmd);
     split(cmd,args);
 
     int i = 0;
@@ -156,25 +185,34 @@ void inputProcessing(char *cmd, int *mode, char *args[], char ***pipe_args)
         
         i++;
     }
+    return SUCCESS;
 }
 
 
 int main(void)
 {
-    char cmd[80];
-    char *args[MAXLINE/2 + 1]; /* command line arguments */
+    char cmd[80], history_buffer[80];
+    char *args[MAXLINE/2 + 1]; 
     char **pipe_args = NULL;
-    int mode = NORMAL;
-    int should_run = 1; /* flag to determine when to exit program */
+    char file_name[MAX_FILENAMELENGTH];
+    int mode = INIT;
+    int run = 1; 
 
-    while (should_run) {
+    while (run) {
         printf("osh>");
 
         fgets(cmd, MAXLINE, stdin);
         cmd[strlen(cmd) - 1] = '\0';
 
-        inputProcessing(cmd, &mode, args, &pipe_args);
-        handle(mode, args, pipe_args);
+        if (inputProcessing(cmd, &mode, args, &pipe_args, file_name, history_buffer) != ERROR)
+        {
+            if (mode == EXIT)
+            {
+                run = 0;
+            }
+            else
+                handle(mode, args, pipe_args, file_name);
+        }
     }
     return 0;
 }
