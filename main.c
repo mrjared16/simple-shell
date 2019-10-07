@@ -15,6 +15,9 @@
 #define REDIRECTION_OUT 3
 #define PIPE 4
 
+#define IN 1
+#define OUT 0
+
 char file_name[80];
 
 void split(char *par,char *args[]){
@@ -51,26 +54,58 @@ NORMAL:
     + child of child: get input from 1st -> execute 2nd
 */
 
-void handle(int mode, char *args[], char *pipe[]) {
-    pid_t pid;
-    pid = fork();
+void handle(int mode, char *args[], char **pipe_args) {
+    pid_t pid1, pid2, pid3;
+    pid1 = fork();
 
-    if (pid == 0) {
-        int fd;
-        if (mode == REDIRECTION_IN) {
-            fd = open(file_name, O_RDONLY, 0);
-            dup2(fd, STDIN_FILENO);
-        } 
-        else 
-        if (mode == REDIRECTION_OUT) {
-            fd = creat(file_name, 0644);
-            dup2(fd, STDOUT_FILENO);
+    if (pid1 == 0) {
+        if (mode == PIPE)
+        {
+            int fd[2];
+            pipe(fd);
+            pid2 = fork();
+            if (pid2 == 0)
+            {
+                dup2(fd[OUT], STDIN_FILENO);
+                close(fd[IN]);
+                close(fd[OUT]);
+                execvp(pipe_args[0], pipe_args);
+            }
+            else {
+                pid3 = fork();
+                if (pid3 == 0)
+                {
+                    dup2(fd[IN], STDOUT_FILENO);
+                    close(fd[OUT]);
+                    close(fd[IN]);
+                    execvp(args[0], args);
+                }
+                else {
+                    close(fd[IN]);
+                    close(fd[OUT]);
+                    waitpid(-1, NULL, 0);
+                    waitpid(-1, NULL, 0); 
+                }
+            }
         }
+        else {
+            int fd;
+            if (mode == REDIRECTION_IN) {
+                fd = open(file_name, O_RDONLY, 0);
+                dup2(fd, STDIN_FILENO);
+            } 
+            else 
+            if (mode == REDIRECTION_OUT) {
+                fd = creat(file_name, 0644);
+                dup2(fd, STDOUT_FILENO);
+            }
 
-        close(fd);
-        execvp(args[0],args);
+            close(fd);
+            execvp(args[0], args);
+        }
     } else {                   
-        wait(NULL);
+        if (mode != CONCURRENT)
+            wait(NULL);
     }
 }
 
@@ -80,25 +115,25 @@ convert command => args
 >, <: get file name, remove "<" or ">" and file name
 |: remove "|", move 2nd command to 2nd args
 */
-int inputProcessing(char *cmd, char *args[], char *(*pipe_args[]))
+void inputProcessing(char *cmd, int *mode, char *args[], char ***pipe_args)
 {
-    int mode = NORMAL;
     if (strcmp(cmd, "!!") == 0)
-        return mode;   
+        return;   
 
+    *mode = NORMAL;
     split(cmd,args);
 
     int i = 0;
     while (args[i] != NULL) {
         if (strcmp(args[i], "<") == 0) {
-            mode = REDIRECTION_IN;
+            *mode = REDIRECTION_IN;
             strcpy(file_name, args[i + 1]);
             args[i] = NULL;
             break;
         } 
         else 
         if (strcmp(args[i], ">") == 0) {
-            mode = REDIRECTION_OUT;
+            *mode = REDIRECTION_OUT;
             strcpy(file_name, args[i + 1]);
             args[i] = NULL;
             break;
@@ -106,22 +141,21 @@ int inputProcessing(char *cmd, char *args[], char *(*pipe_args[]))
         else
         if (strcmp(args[i], "|") == 0)
         {
-            mode = PIPE; 
-            pipe_args = &(args) + i + 1;
+            *mode = PIPE; 
+            *pipe_args = &args[i + 1];
             args[i] = NULL;
             break;
         }
         else 
         if (strcmp(args[i], "&") == 0)
         {
-            mode = CONCURRENT;
+            *mode = CONCURRENT;
             args[i] = NULL;
             break;
         }
         
         i++;
     }
-    return mode;
 }
 
 
@@ -129,7 +163,8 @@ int main(void)
 {
     char cmd[80];
     char *args[MAXLINE/2 + 1]; /* command line arguments */
-    char *(*pipe_args[MAXLINE/2 + 1]);
+    char **pipe_args = NULL;
+    int mode = NORMAL;
     int should_run = 1; /* flag to determine when to exit program */
 
     while (should_run) {
@@ -138,8 +173,8 @@ int main(void)
         fgets(cmd, MAXLINE, stdin);
         cmd[strlen(cmd) - 1] = '\0';
 
-        int mode = inputProcessing(cmd, args, pipe_args);
-        handle(mode, args, *pipe_args);
+        inputProcessing(cmd, &mode, args, &pipe_args);
+        handle(mode, args, pipe_args);
     }
     return 0;
 }
