@@ -24,19 +24,51 @@
 #define IN 1
 #define OUT 0
 
+int findSpecialOperators(char *par) {
+    int i = 0;
+    while (par[i] != '\0') {
+        if (par[i] == '<' || par[i] == '>' || par[i] == '|') {
+            return i;
+        }
+        i++;
+    }
+    return 0;
+}
+
+void copyStr(char *par1, char *par2, int pos_start, int pos_end) {
+    int i_par1 = 0;
+    for (int i = pos_start; i <= pos_end; i++) {
+        par1[i_par1] = par2[i];
+        i_par1++;
+    }
+    par1[i_par1] = '\0';
+}
 
 void split(char *par,char *args[]){
     char* tmp;
     tmp = (char*) malloc (strlen(par));
     strcpy(tmp, par);
 
-    args[0] = strtok(tmp, " ");
-    int i = 0;
-    while(args[i] != NULL){
-        i++;
-        args[i] = strtok(NULL, " ");
+    int posSpecOpe = findSpecialOperators(tmp);
+    if (posSpecOpe == 0) {
+        args[0] = strtok(tmp, " ");
+        int i = 0;
+        while(args[i] != NULL){
+            i++;
+            args[i] = strtok(NULL, " ");
+        }
+        args[i] = NULL;
+    } else {
+        args[0] = (char*) malloc (posSpecOpe + 1);
+        args[1] = (char*) malloc (2);
+        args[2] = (char*) malloc (strlen(tmp) - posSpecOpe + 1);
+        
+        copyStr(args[0], tmp, 0, posSpecOpe - 1);
+        copyStr(args[1], tmp, posSpecOpe, posSpecOpe);
+        copyStr(args[2], tmp, posSpecOpe + 1, strlen(tmp) - 1);
+        args[3] = NULL;
     }
-    args[i] = NULL;
+    printf("%s\n%s\n%s\n", args[0], args[1], args[2]);
     //free(tmp);
 }
 
